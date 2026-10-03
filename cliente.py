@@ -22,12 +22,8 @@ def iniciar_cliente():
             print("\nTu tablero de tiros:")
             imprimir_tablero(tablero_tiros)
             flota = {
-                "Submarino": 5,
-                "Acorazado": 4,
-                "Crucero 1": 3,
-                "Crucero 2": 3,
-                "Destructor 1": 2,
-                "Destructor 2": 2,
+                "Submarino": 5, "Acorazado": 4, "Crucero 1": 3,
+                "Crucero 2": 3, "Destructor 1": 2, "Destructor 2": 2,
                 "Destructor 3": 2
             }
             print("\nDESPLIEGUE")
@@ -55,6 +51,11 @@ def iniciar_cliente():
             imprimir_tablero(mi_tablero)
         
             cliente.sendall("ESTADO:LISTO".encode('utf-8'))
+
+            respuesta_turno = cliente.recv(1024).decode('utf-8')
+            if respuesta_turno.startswith("TURNO:"):
+                quien_empieza = respuesta_turno.split(":")[1]
+                print(f"\n El servidor ha decidido que el primer turno es para: {quien_empieza}")
 
 if __name__ == "__main__":
     iniciar_cliente()

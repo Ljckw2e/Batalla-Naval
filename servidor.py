@@ -1,7 +1,28 @@
 import socket
+import random
+from tablero import crear_tablero, validar_espacio, colocar_nave, imprimir_tablero
 
 HOST = '127.0.0.1'
 PUERTO = 65432
+
+def colocar_naves_pc(tablero):
+    "Acomoda las 7 naves de la PC de forma aleatoria."
+    flota = {
+        "Submarino": 5, "Acorazado": 4, "Cruecero 1": 3,
+        "Crucero 2": 3, "Destructor 1": 2, "Destructor 2": 2,
+        "Destructor 3": 2 
+    }
+
+    for nombre, longitud in flota.items():
+        colocada = False
+        while not colocada:
+            fila = random.randint(0,9)
+            col = random.randint(0,9)
+            orientacion = random.choice(['H', 'V'])
+
+            if validar_espacio(tablero, fila, col, longitud, orientacion):
+                colocar_nave(tablero, fila, col, longitud, orientacion)
+                colocada = True
 
 def iniciar_servidor():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as servidor:
@@ -12,12 +33,24 @@ def iniciar_servidor():
         conexion, direccion = servidor.accept()
         
         with conexion:
-            print(f"Cliente conectado desde {direccion}")            
+            print(f"Cliente conectado desde {direccion}")      
+            tablero_pc = crear_tablero()
+
             datos = conexion.recv(1024).decode('utf-8')
             if datos.startswith("USUARIO:"):
                 nombre = datos.split(":")[1]
-                print(f"Iniciando partida contra: {nombre}")               
+                print(f"Iniciando partida contra: {nombre}")
                 conexion.sendall("COMANDOS:INICIO".encode('utf-8'))
+
+                datos = conexion.recv(1024).decode('utf-8')
+                if datos == "ESTADO:LISTO":
+                    print(f"{nombre} está listo. Acomodando flota de la PC...")
+                    colocar_naves_pc(tablero_pc)
+                    print("Tablero oculto de la PC")
+                    imprimir_tablero(tablero_pc)
+                    turno = random.choice(['USUARIO', 'PC'])
+                    print(f"El primer turno es para: {turno}")
+                    conexion.sendall(f"TURNO:{turno}".encode('utf-8'))
 
 if __name__ == "__main__":
     iniciar_servidor()
