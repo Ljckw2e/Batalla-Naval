@@ -57,5 +57,64 @@ def iniciar_cliente():
                 quien_empieza = respuesta_turno.split(":")[1]
                 print(f"\n El servidor ha decidido que el primer turno es para: {quien_empieza}")
 
+                turno = quien_empieza
+                vidas_usuario = 21
+                vidas_pc = 21
+
+                print("\n INICIA EL COMBATE")
+                while vidas_usuario > 0 and vidas_pc > 0:
+                    if turno == 'USUARIO':
+                        print("\n[TU TURNO]")
+                        tiros_seguidos = 0
+                        while tiros_seguidos < 3 and vidas_pc > 0:
+                            imprimir_tablero(tablero_tiros)
+                            print(f"Tiro: {tiros_seguidos + 1} de 3")
+
+                            f = int(input("Fila (0-9): "))
+                            c = int(input("Columna (0-9): "))
+
+                            cliente.sendall(f"ATAQUE:{f}, {c}".encode('utf-8'))
+
+                            respuesta = cliente.recv(1024).decode('utf-8')
+                            if respuesta == "RESULTADO:IMPACTO":
+                                print("\n¡IMPACTO! Tienes otro tiro.")
+                                tablero_tiros[f][c] = 'X'
+                                vidas_pc -= 1
+                                tiros_seguidos += 1
+                            elif respuesta == "RESULTADO:AGUA":
+                                print("\n¡AGUA! Fin de tu turno.")
+                                tablero_tiros[f][c] = 'O'
+                                break
+                        turno = 'PC'
+                        
+                    else:
+                        print("\n[TURNO DE LA PC]")
+                        tiros_seguidos = 0
+                        while tiros_seguidos < 3 and vidas_usuario > 0:
+                            print("Esperando el tiro de la PC...")
+                            msg = cliente.recv(1024).decode('utf-8')
+                            
+                            if msg.startswith("ATAQUE_PC:"):
+                                f, c = map(int, msg.split(":")[1].split(","))
+                                print(f"La PC disparó en: Fila {f}, Columna {c}")
+                                
+                                if mi_tablero[f][c] == 1:
+                                    print("¡La PC le dio a una de tus naves!")
+                                    mi_tablero[f][c] = 'X'
+                                    vidas_usuario -= 1
+                                    cliente.sendall("RESULTADO:IMPACTO".encode('utf-8'))
+                                    tiros_seguidos += 1
+                                else:
+                                    print("La PC disparó al agua.")
+                                    mi_tablero[f][c] = 'O'
+                                    cliente.sendall("RESULTADO:AGUA".encode('utf-8'))
+                                    break
+                        turno = 'USUARIO'
+                
+                if vidas_usuario == 0:
+                    print("\n DERROTA: La PC hundió toda tu flota")
+                else:
+                    print("\nVICTORIA: Hundiste toda la flota de la PC")
+
 if __name__ == "__main__":
     iniciar_cliente()

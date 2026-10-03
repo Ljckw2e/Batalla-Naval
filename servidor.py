@@ -51,6 +51,40 @@ def iniciar_servidor():
                     turno = random.choice(['USUARIO', 'PC'])
                     print(f"El primer turno es para: {turno}")
                     conexion.sendall(f"TURNO:{turno}".encode('utf-8'))
+                    vidas_usuario = 21
+                    vidas_pc = 21
+
+                    while vidas_usuario > 0 and vidas_pc > 0:
+                        if turno == 'USUARIO':
+                            tiro_seguidos = 0
+                            while tiro_seguidos < 3 and vidas_pc > 0:
+                                msg = conexion.recv(1024).decode('utf-8')
+                                if msg.startswith("ATAQUE:"):
+                                    f, c= map(int, msg.split(":")[1].split(","))
+
+                                if tablero_pc[f][c] == 1:
+                                    tablero_pc[f][c] = 'X'
+                                    vidas_pc -= 1
+                                    conexion.sendall("RESULTADO:IMPACTO".encode('utf-8'))
+                                    tiro_seguidos += 1
+                                else:
+                                    tablero_pc[f][c] = '0'
+                                    conexion.sendall("RESULTADO:AGUA".encode('utf-8'))
+                                    break
+                            turno = 'PC'
+                        else:
+                            tiro_seguidos = 0
+                            while tiro_seguidos < 3 and vidas_usuario > 0:
+                                f, c= random.randint(0,9), random.randint(0,9)
+                                conexion.sendall(f"ATAQUE_PC:{f}{c}".encode('utf-8'))
+
+                                respuesta = conexion.recv(1024).decode('utf-8')
+                                if respuesta == "RESULTADO:IMPACTO":
+                                    vidas_usuario -= 1
+                                    tiro_seguidos += 1
+                                elif respuesta == "RESULTADO:AGUA":
+                                    break
+                            turno = 'USUARIO'
 
 if __name__ == "__main__":
     iniciar_servidor()
