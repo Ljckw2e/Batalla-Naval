@@ -14,14 +14,17 @@ ctk.set_default_color_theme("blue")
 class ClienteBatallaNaval:
     def __init__(self, ventana):
         self.mi_tablero = crear_tablero()
-        
+                        
         self.inventario = [
-            ("Submarino", 5), ("Acorazado", 4), ("Crucero 1", 3),
-            ("Crucero 2", 3), ("Destructor 1", 2), ("Destructor 2", 2), ("Destructor 3", 2)
+                ("Submarino", 5), ("Acorazado", 4), ("Crucero 1", 3),
+                ("Crucero 2", 3), ("Destructor 1", 2), ("Destructor 2", 2),
+                ("Destructor 3", 2)
         ]
         self.nave_actual = 0
         self.orientacion_var = ctk.StringVar(value="H")
-
+        
+        self.mi_turno = False
+         
         self.ventana = ventana
         self.ventana.title("Batalla Naval - Interfaz Gráfica")
         self.ventana.geometry("900x600")
@@ -106,9 +109,10 @@ class ClienteBatallaNaval:
                 self.botones_flota[f][c] = btn_flota
                 
                 btn_radar = ctk.CTkButton(frame_grid_radar, text="", width=35, height=35, corner_radius=2, 
-                                          fg_color="#5e81ac", state="disabled")
+                                          fg_color="#5e81ac", state="disabled", command = lambda fila = f, col = c: self.enviar_ataque(fila,col))
                 btn_radar.grid(row=f, column=c, padx=1, pady=1)
                 self.botones_radar[f][c] = btn_radar
+
     def intentar_colocar(self, f, c):
             if self.nave_actual >= len(self.inventario):
                 return
@@ -141,7 +145,63 @@ class ClienteBatallaNaval:
         respuesta = self.socket_cliente.recv(1024).decode('utf-8')
         if respuesta.startswith("TURNO:"):
             quien = respuesta.split(":")[1]
-            self.ventana.after(0, lambda: self.lbl_estado.configure(text=f"Primer turno: {quien}"))
+            self.mi_turno = (quien == "USUARIO")
+
+            texto = "Tu turno, ataca en el radar." if self.mi_turno else "Turno de la PC. Esperando ataque..."
+            self.ventana.after(0, lambda: self.lbl_estado.configure(text=texto))
+            if self.mi_turno:
+                self.ventana.after(0, self.habilitar_radar)
+
+            threading.Thread(target=self.escuchar_servidor, daemon=True).start()
+            
+    def habilitar_radar(self):
+        for f in range(10):
+            for c in range(10):
+                if self.botones_radar[f][c].cget("text") == "":
+                    self.botones_radar[f][c].configure(state="normal")                 
+
+    def enviar_ataque(self, f, c):
+        if not self.mi_turno: return
+        for fila in self.botones_radar:
+            for btn in fila:
+                btn.configure(state="disabled")
+
+        self.ultimo_ataque = (f, c)
+        self.socket_cliente.sendall(f"ATAQUE:{f}{c}".encode('utf-8'))
+
+    def escuchar_servidor(self):
+        while True:
+            try:
+                mensaje = self.socket_cliente.recv(1024).decode('utf-8')
+                if not mensaje:
+                    break
+                if mensaje == "RESULTADO:IMPACTO":
+                    f, c = self.ultimo_ataque
+                    self.ventana.after(0, lambda: self.botones_radar[f][c].configure(fg_color="#bf616a", text="X"))
+                    self.ventana.after(0, self.habilitar_radar)
+                elif mensaje == "RESULTADO:AGUA":
+                    f, c = self.ultimo_ataque
+                    self.ventana.after(0, lambda: self.botones_radar[f][c].configure(fg_color="#4c566a", texto="0"))
+                    self.mi_turno = False
+                    self.ventana.after(0, lambda: self.lbl_estado.configure(text="Fallaste. Turno de la PC..."))
+                elif mensaje.startswith("ATAQUE_PC:"):
+                    f, c = map(int, mensaje.split(":")[1].split(","))
+                
+                    if self.mi_tablero[f][c] == 1:
+                        self.mi_tablero[f][c] = 'X'
+                        self.socket_cliente.sendall("RESULTADO:IMPACTO".encode('utf-8'))
+                        self.ventana.after(0, lambda: self.botones_flota[f][c].configure(fg_color="#bf616a", text="X"))
+                        self.ventana.after(0, lambda:self.lbl_estado.configure(text="La PC acertó, sigue tirando..."))
+                    else:
+                        self.mi_tablero[f][c] = 'O'
+                        self.socket_cliente.sendall("RESULTADO:AGUA".encode('utf-8'))
+                        self.ventana.after(0, lambda: self.botones_flota[f][c].configure(fg_color="#81a1c1", text="O"))
+                        self.mi_turno = True
+                        self.ventana.after(0, lambda: self.lbl_estado.configure(text="La PC falló. ¡ES TU TURNO!"))
+                        self.ventana.after(0, self.habilitar_radar)
+            except Exception as e:
+                print ("Conexión perdida:", e)
+                break
 
 if __name__ == "__main__":
     ventana_principal = ctk.CTk()
