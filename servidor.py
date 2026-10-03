@@ -1,5 +1,6 @@
 import socket
 import random
+import time
 from tablero import crear_tablero, validar_espacio, colocar_nave, imprimir_tablero
 
 HOST = '127.0.0.1'
@@ -51,40 +52,54 @@ def iniciar_servidor():
                     turno = random.choice(['USUARIO', 'PC'])
                     print(f"El primer turno es para: {turno}")
                     conexion.sendall(f"TURNO:{turno}".encode('utf-8'))
-                    vidas_usuario = 21
-                    vidas_pc = 21
-
-                    while vidas_usuario > 0 and vidas_pc > 0:
-                        if turno == 'USUARIO':
-                            tiro_seguidos = 0
-                            while tiro_seguidos < 3 and vidas_pc > 0:
-                                msg = conexion.recv(1024).decode('utf-8')
-                                if msg.startswith("ATAQUE:"):
-                                    f, c= map(int, msg.split(":")[1].split(","))
-
+                vidas_usuario = 21
+                vidas_pc = 21
+                
+                while vidas_usuario > 0 and vidas_pc > 0:
+                    if turno == 'USUARIO':
+                        tiros_seguidos = 0
+                        while tiros_seguidos < 3 and vidas_pc > 0:
+                            msg = conexion.recv(1024).decode('utf-8')
+                            if not msg: break
+                            
+                            if "ATAQUE:" in msg:
+                                parte = msg.split("ATAQUE:")[1]
+                                f, c = int(parte[0]), int(parte[2])
+                                
                                 if tablero_pc[f][c] == 1:
                                     tablero_pc[f][c] = 'X'
                                     vidas_pc -= 1
                                     conexion.sendall("RESULTADO:IMPACTO".encode('utf-8'))
-                                    tiro_seguidos += 1
+                                    tiros_seguidos += 1
                                 else:
-                                    tablero_pc[f][c] = '0'
+                                    tablero_pc[f][c] = 'O'
                                     conexion.sendall("RESULTADO:AGUA".encode('utf-8'))
                                     break
-                            turno = 'PC'
-                        else:
-                            tiro_seguidos = 0
-                            while tiro_seguidos < 3 and vidas_usuario > 0:
-                                f, c= random.randint(0,9), random.randint(0,9)
-                                conexion.sendall(f"ATAQUE_PC:{f}{c}".encode('utf-8'))
+                        turno = 'PC'
 
-                                respuesta = conexion.recv(1024).decode('utf-8')
-                                if respuesta == "RESULTADO:IMPACTO":
-                                    vidas_usuario -= 1
-                                    tiro_seguidos += 1
-                                elif respuesta == "RESULTADO:AGUA":
-                                    break
-                            turno = 'USUARIO'
+                    else: 
+                        # Turno de la PC (tu código de la PC va aquí)
+                        tiros_seguidos = 0
+                        while tiros_seguidos < 3 and vidas_usuario > 0:
+                            f, c = random.randint(0, 9), random.randint(0, 9)
+                            time.sleep(1)
+                            conexion.sendall(f"ATAQUE_PC:{f},{c}".encode('utf-8'))
+                            
+                            respuesta = conexion.recv(1024).decode('utf-8')
+                            if "RESULTADO:IMPACTO" in respuesta:
+                                vidas_usuario -= 1
+                                tiros_seguidos += 1
+                            elif "RESULTADO:AGUA" in respuesta:
+                                break
+                        turno = 'USUARIO'
+                
+                # <--- FÍJATE EN ESTA ALINEACIÓN --->
+                # ESTO VA AFUERA DEL WHILE, al mismo nivel de la palabra "while"
+                time.sleep(0.5)
+                if vidas_usuario <= 0:
+                    conexion.sendall("FIN:DERROTA".encode('utf-8'))
+                else:
+                    conexion.sendall("FIN:VICTORIA".encode('utf-8'))
 
 if __name__ == "__main__":
     iniciar_servidor()

@@ -24,6 +24,7 @@ class ClienteBatallaNaval:
         self.orientacion_var = ctk.StringVar(value="H")
         
         self.mi_turno = False
+        self.racha_tiros = 0
          
         self.ventana = ventana
         self.ventana.title("Batalla Naval - Interfaz Gráfica")
@@ -167,40 +168,70 @@ class ClienteBatallaNaval:
                 btn.configure(state="disabled")
 
         self.ultimo_ataque = (f, c)
-        self.socket_cliente.sendall(f"ATAQUE:{f}{c}".encode('utf-8'))
+        self.socket_cliente.sendall(f"ATAQUE:{f},{c}".encode('utf-8'))
 
     def escuchar_servidor(self):
         while True:
             try:
                 mensaje = self.socket_cliente.recv(1024).decode('utf-8')
-                if not mensaje:
-                    break
-                if mensaje == "RESULTADO:IMPACTO":
-                    f, c = self.ultimo_ataque
-                    self.ventana.after(0, lambda: self.botones_radar[f][c].configure(fg_color="#bf616a", text="X"))
-                    self.ventana.after(0, self.habilitar_radar)
-                elif mensaje == "RESULTADO:AGUA":
-                    f, c = self.ultimo_ataque
-                    self.ventana.after(0, lambda: self.botones_radar[f][c].configure(fg_color="#4c566a", texto="0"))
-                    self.mi_turno = False
-                    self.ventana.after(0, lambda: self.lbl_estado.configure(text="Fallaste. Turno de la PC..."))
-                elif mensaje.startswith("ATAQUE_PC:"):
-                    f, c = map(int, mensaje.split(":")[1].split(","))
+                if not mensaje: break
                 
+                if "RESULTADO:IMPACTO" in mensaje:
+                    f, c = self.ultimo_ataque
+                    self.ventana.after(0, lambda f=f, c=c: self.botones_radar[f][c].configure(fg_color="#bf616a", text="X"))
+                    self.racha_tiros += 1
+                    
+                    if self.racha_tiros >= 3:
+                        self.mi_turno = False
+                        self.racha_tiros = 0
+                        self.ventana.after(0, lambda: self.lbl_estado.configure(text="¡Impacto! Pero agotaste tus 3 tiros. Turno de la PC..."))
+                    else:
+                        self.ventana.after(0, lambda: self.lbl_estado.configure(text=f"¡IMPACTO! Tiro {self.racha_tiros}/3. Tienes otro."))
+                        self.ventana.after(0, self.habilitar_radar)
+                    
+                if "RESULTADO:AGUA" in mensaje:
+                    f, c = self.ultimo_ataque
+                    self.ventana.after(0, lambda f=f, c=c: self.botones_radar[f][c].configure(fg_color="#4c566a", text="O"))
+                    self.mi_turno = False
+                    self.racha_tiros = 0
+                    self.ventana.after(0, lambda: self.lbl_estado.configure(text="Fallo. Turno de la PC..."))
+                    
+                if "ATAQUE_PC:" in mensaje:
+                    parte_ataque = mensaje.split("ATAQUE_PC:")[1] 
+                    f, c = int(parte_ataque[0]), int(parte_ataque[2])
+                    
                     if self.mi_tablero[f][c] == 1:
                         self.mi_tablero[f][c] = 'X'
+                        self.racha_tiros += 1
                         self.socket_cliente.sendall("RESULTADO:IMPACTO".encode('utf-8'))
-                        self.ventana.after(0, lambda: self.botones_flota[f][c].configure(fg_color="#bf616a", text="X"))
-                        self.ventana.after(0, lambda:self.lbl_estado.configure(text="La PC acertó, sigue tirando..."))
+                        self.ventana.after(0, lambda f=f, c=c: self.botones_flota[f][c].configure(fg_color="#bf616a", text="X"))
+                        
+                        if self.racha_tiros >= 3:
+                            self.mi_turno = True
+                            self.racha_tiros = 0
+                            self.ventana.after(0, lambda: self.lbl_estado.configure(text="La PC agotó sus 3 tiros. ¡ES TU TURNO!"))
+                            self.ventana.after(0, self.habilitar_radar)
+                        else:
+                            self.ventana.after(0, lambda: self.lbl_estado.configure(text=f"¡La PC acertó (Tiro {self.racha_tiros}/3)! Sigue tirando..."))
                     else:
                         self.mi_tablero[f][c] = 'O'
+                        self.racha_tiros = 0
                         self.socket_cliente.sendall("RESULTADO:AGUA".encode('utf-8'))
-                        self.ventana.after(0, lambda: self.botones_flota[f][c].configure(fg_color="#81a1c1", text="O"))
+                        self.ventana.after(0, lambda f=f, c=c: self.botones_flota[f][c].configure(fg_color="#81a1c1", text="O"))
                         self.mi_turno = True
                         self.ventana.after(0, lambda: self.lbl_estado.configure(text="La PC falló. ¡ES TU TURNO!"))
                         self.ventana.after(0, self.habilitar_radar)
+                        
+                if "FIN:VICTORIA" in mensaje:
+                    self.ventana.after(0, lambda: self.lbl_estado.configure(text="¡GANASTE! Hundiste toda la flota de la PC.", text_color="#a3be8c", font=("Roboto", 18, "bold")))
+                    break
+                    
+                if "FIN:DERROTA" in mensaje:
+                    self.ventana.after(0, lambda: self.lbl_estado.configure(text="DERROTA. La PC hundió toda tu flota.", text_color="#bf616a", font=("Roboto", 18, "bold")))
+                    break
+                        
             except Exception as e:
-                print ("Conexión perdida:", e)
+                print("Error en el hilo de red:", e)
                 break
 
 if __name__ == "__main__":
