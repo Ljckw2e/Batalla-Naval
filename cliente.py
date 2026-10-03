@@ -77,7 +77,7 @@ def iniciar_cliente():
 
                             respuesta = cliente.recv(1024).decode('utf-8')
                             if respuesta == "RESULTADO:IMPACTO":
-                                print("\n¡IMPACTO! Tienes otro tiro.")
+                                print("\nTienes otro tiro!")
                                 tablero_tiros[f][c] = 'X'
                                 vidas_pc -= 1
                                 tiros_seguidos += 1
@@ -99,7 +99,7 @@ def iniciar_cliente():
                                 print(f"La PC disparó en: Fila {f}, Columna {c}")
                                 
                                 if mi_tablero[f][c] == 1:
-                                    print("¡La PC le dio a una de tus naves!")
+                                    print("La PC le dio a una de tus naves")
                                     mi_tablero[f][c] = 'X'
                                     vidas_usuario -= 1
                                     cliente.sendall("RESULTADO:IMPACTO".encode('utf-8'))
