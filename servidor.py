@@ -1,105 +1,173 @@
-import socket
 import random
-import time
-from tablero import crear_tablero, validar_espacio, colocar_nave, imprimir_tablero
+import socket
+
+from tablero import (
+    NAVES, crear_tablero, colocar_flota_aleatoria, procesar_disparo,
+    flota_hundida, marcar_hundida, elegir_tiro_pc, imprimir_dos,
+    mensaje_resultado, parsear_resultado, parsear_ataque,
+)
 
 HOST = '127.0.0.1'
 PUERTO = 65432
 
-def colocar_naves_pc(tablero):
-    "Acomoda las 7 naves de la PC de forma aleatoria."
-    flota = {
-        "Submarino": 5, "Acorazado": 4, "Cruecero 1": 3,
-        "Crucero 2": 3, "Destructor 1": 2, "Destructor 2": 2,
-        "Destructor 3": 2 
-    }
+MAX_TIROS = 3             # tiros consecutivos permitidos por turno
+TOTAL_NAVES = len(NAVES)  # 7 naves = 21 casillas
 
-    for nombre, longitud in flota.items():
-        colocada = False
-        while not colocada:
-            fila = random.randint(0,9)
-            col = random.randint(0,9)
-            orientacion = random.choice(['H', 'V'])
 
-            if validar_espacio(tablero, fila, col, longitud, orientacion):
-                colocar_nave(tablero, fila, col, longitud, orientacion)
-                colocada = True
+class ErrorProtocolo(Exception):
+    pass
+
+
+class Partida:
+    """Estado de una partida. procesar() recibe el mensaje del cliente y
+    devuelve (respuesta_unica_para_el_cliente, partida_terminada)."""
+
+    def __init__(self, nombre):
+        self.nombre = nombre
+        self.tablero_pc = crear_tablero()          # naves de la PC
+        self.tablero_tiros_pc = crear_tablero()    # tiros de la PC al usuario
+        self.flota_pc = colocar_flota_aleatoria(self.tablero_pc)
+        self.hundidas_usuario = 0
+        self.turno = random.choice(['USUARIO', 'PC'])
+        self.tiros = 0                 # aciertos seguidos en el turno actual
+        self.ultimo_tiro_pc = None
+        self._mostrar_tableros()
+
+    def _mostrar_tableros(self):
+        print()
+        imprimir_dos(self.tablero_pc, self.tablero_tiros_pc,
+                     "TABLERO DE LA PC", "TIROS DE LA PC")
+
+    def _nuevo_tiro_pc(self):
+        f, c = elegir_tiro_pc(self.tablero_tiros_pc)
+        self.ultimo_tiro_pc = (f, c)
+        return f"ATAQUE_PC:{f},{c}"
+
+    def mensaje_inicial(self):
+        print(f"El primer turno es para: {self.turno}")
+        if self.turno == 'USUARIO':
+            return "TURNO:USUARIO"
+        return f"TURNO:PC|{self._nuevo_tiro_pc()}"
+
+    def procesar(self, mensaje):
+        if self.turno == 'USUARIO':
+            return self._ataque_del_usuario(mensaje)
+        return self._resultado_del_tiro_pc(mensaje)
+
+    def _ataque_del_usuario(self, mensaje):
+        ataque = parsear_ataque(mensaje)
+        if ataque is None:
+            return "RESULTADO:INVALIDO|TURNO:USUARIO", False
+
+        f, c = ataque
+        resultado, nave = procesar_disparo(self.tablero_pc, self.flota_pc, f, c)
+        texto = mensaje_resultado(resultado, nave)
+
+        if resultado in ("INVALIDO", "REPETIDO"):
+            return f"{texto}|TURNO:USUARIO", False     # no cuenta como tiro
+
+        detalle = f"hundió el {nave['nombre']}" if nave else resultado.lower()
+        print(f"El usuario disparó a ({f},{c}): {detalle}")
+        self._mostrar_tableros()
+
+        if flota_hundida(self.flota_pc):
+            print(f"\n{self.nombre} hundió toda la flota de la PC. Gana {self.nombre}.")
+            return f"{texto}|FIN:VICTORIA", True
+
+        if resultado != "AGUA":
+            self.tiros += 1
+        if resultado == "AGUA" or self.tiros >= MAX_TIROS:
+            self.turno, self.tiros = 'PC', 0
+            return f"{texto}|TURNO:PC|{self._nuevo_tiro_pc()}", False
+        return f"{texto}|TURNO:USUARIO", False         # sigue tirando
+
+    # turno de la PC 
+    def _resultado_del_tiro_pc(self, mensaje):
+        try:
+            tipo, nombre_nave, celdas = parsear_resultado(mensaje)
+        except ValueError as e:
+            raise ErrorProtocolo(str(e))
+        f, c = self.ultimo_tiro_pc
+
+        if tipo == "AGUA":
+            self.tablero_tiros_pc[f][c] = 'O'
+        elif tipo == "IMPACTO":
+            self.tablero_tiros_pc[f][c] = 'X'
+            self.tiros += 1
+        elif tipo == "HUNDIDO":
+            marcar_hundida(self.tablero_tiros_pc, celdas)
+            self.hundidas_usuario += 1
+            self.tiros += 1
+        else:
+            raise ErrorProtocolo(f"resultado no esperado del cliente: {tipo}")
+
+        detalle = f"hundió el {nombre_nave}" if tipo == "HUNDIDO" else tipo.lower()
+        print(f"La PC disparó a ({f},{c}): {detalle}")
+        self._mostrar_tableros()
+
+        if self.hundidas_usuario >= TOTAL_NAVES:
+            print("\nLa PC hundió toda la flota del usuario. Gana la PC.")
+            return "FIN:DERROTA", True
+
+        if tipo == "AGUA" or self.tiros >= MAX_TIROS:
+            self.turno, self.tiros = 'USUARIO', 0
+            return "TURNO:USUARIO", False
+        return self._nuevo_tiro_pc(), False            # la PC sigue tirando
+
+
+def recibir(conexion):
+    datos = conexion.recv(1024)
+    if not datos:
+        raise ConnectionError("El cliente cerró la conexión.")
+    return datos.decode("utf-8").strip()
+
+
+def enviar(conexion, mensaje):
+    conexion.sendall(mensaje.encode("utf-8"))
+
+
+def jugar(conexion):
+    mensaje = recibir(conexion)
+    if not mensaje.startswith("USUARIO:"):
+        raise ErrorProtocolo("Se esperaba USUARIO:<nombre>")
+    nombre = mensaje.split(":", 1)[1].strip() or "Jugador"
+    print(f"Iniciando partida contra: {nombre}")
+    enviar(conexion, "COMANDOS:INICIO")
+
+    if recibir(conexion) != "ESTADO:LISTO":
+        raise ErrorProtocolo("Se esperaba ESTADO:LISTO")
+    print(f"{nombre} está listo. Acomodando flota de la PC...")
+
+    partida = Partida(nombre)
+    enviar(conexion, partida.mensaje_inicial())
+
+    terminada = False
+    while not terminada:
+        respuesta, terminada = partida.procesar(recibir(conexion))
+        enviar(conexion, respuesta)
+
 
 def iniciar_servidor():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as servidor:
+        servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         servidor.bind((HOST, PUERTO))
-        servidor.listen()
+        servidor.listen(1)
         print(f"Servidor a la escucha en {HOST}:{PUERTO}...")
-        
+
         conexion, direccion = servidor.accept()
-        
+        # Solo se atiende a un cliente: se deja de escuchar, así cualquier
+        # otro intento de conexión es rechazado.
+        servidor.close()
+
         with conexion:
-            print(f"Cliente conectado desde {direccion}")      
-            tablero_pc = crear_tablero()
+            print(f"Cliente conectado desde {direccion}")
+            try:
+                jugar(conexion)
+            except ErrorProtocolo as e:
+                print(f"[ERROR DE PROTOCOLO] {e}")
+            except (ConnectionError, OSError):
+                print("Se perdió la conexión con el cliente.")
 
-            datos = conexion.recv(1024).decode('utf-8')
-            if datos.startswith("USUARIO:"):
-                nombre = datos.split(":")[1]
-                print(f"Iniciando partida contra: {nombre}")
-                conexion.sendall("COMANDOS:INICIO".encode('utf-8'))
-
-                datos = conexion.recv(1024).decode('utf-8')
-                if datos == "ESTADO:LISTO":
-                    print(f"{nombre} está listo. Acomodando flota de la PC...")
-                    colocar_naves_pc(tablero_pc)
-                    print("Tablero oculto de la PC")
-                    imprimir_tablero(tablero_pc)
-                    turno = random.choice(['USUARIO', 'PC'])
-                    print(f"El primer turno es para: {turno}")
-                    conexion.sendall(f"TURNO:{turno}".encode('utf-8'))
-                vidas_usuario = 21
-                vidas_pc = 21
-                
-                while vidas_usuario > 0 and vidas_pc > 0:
-                    if turno == 'USUARIO':
-                        tiros_seguidos = 0
-                        while tiros_seguidos < 3 and vidas_pc > 0:
-                            msg = conexion.recv(1024).decode('utf-8')
-                            if not msg: break
-                            
-                            if "ATAQUE:" in msg:
-                                parte = msg.split("ATAQUE:")[1]
-                                f, c = int(parte[0]), int(parte[2])
-                                
-                                if tablero_pc[f][c] == 1:
-                                    tablero_pc[f][c] = 'X'
-                                    vidas_pc -= 1
-                                    conexion.sendall("RESULTADO:IMPACTO".encode('utf-8'))
-                                    tiros_seguidos += 1
-                                else:
-                                    tablero_pc[f][c] = 'O'
-                                    conexion.sendall("RESULTADO:AGUA".encode('utf-8'))
-                                    break
-                        turno = 'PC'
-
-                    else: 
-                        # Turno de la PC (tu código de la PC va aquí)
-                        tiros_seguidos = 0
-                        while tiros_seguidos < 3 and vidas_usuario > 0:
-                            f, c = random.randint(0, 9), random.randint(0, 9)
-                            time.sleep(1)
-                            conexion.sendall(f"ATAQUE_PC:{f},{c}".encode('utf-8'))
-                            
-                            respuesta = conexion.recv(1024).decode('utf-8')
-                            if "RESULTADO:IMPACTO" in respuesta:
-                                vidas_usuario -= 1
-                                tiros_seguidos += 1
-                            elif "RESULTADO:AGUA" in respuesta:
-                                break
-                        turno = 'USUARIO'
-                
-                # <--- FÍJATE EN ESTA ALINEACIÓN --->
-                # ESTO VA AFUERA DEL WHILE, al mismo nivel de la palabra "while"
-                time.sleep(0.5)
-                if vidas_usuario <= 0:
-                    conexion.sendall("FIN:DERROTA".encode('utf-8'))
-                else:
-                    conexion.sendall("FIN:VICTORIA".encode('utf-8'))
 
 if __name__ == "__main__":
     iniciar_servidor()
