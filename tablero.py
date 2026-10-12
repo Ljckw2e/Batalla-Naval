@@ -9,7 +9,7 @@ NAVES = [
 ]
 
 SIMBOLOS = {0: '~', 1: 'N', 'X': 'X', 'O': 'O', '#': '#'}
-# Creación e impresión
+
 def crear_tablero():
     return [[0 for _ in range(TAM)] for _ in range(TAM)]
 

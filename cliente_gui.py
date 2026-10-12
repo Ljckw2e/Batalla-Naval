@@ -11,9 +11,8 @@ from tablero import (
 HOST = '127.0.0.1'
 PUERTO = 65432
 MAX_TIROS = 3
-PAUSA_PC = 0.8     # pausa visual antes de mostrar el tiro de la PC
+PAUSA_PC = 0.8     
 
-# Colores
 C_CASILLA = "#3b4252"
 C_NAVE = "#a3be8c"
 C_RADAR = "#5e81ac"
@@ -22,15 +21,15 @@ C_AGUA_RADAR = "#4c566a"
 C_AGUA_PROPIA = "#81a1c1"
 C_HUNDIDA = "#b48ead"
 
-# Tema visual
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 
 class ClienteBatallaNaval:
     def __init__(self, ventana):
-        self.mi_tablero = crear_tablero()        # mis naves
-        self.tablero_tiros = crear_tablero()     # mis tiros al rival (radar)
+        self.mi_tablero = crear_tablero()       
+        self.tablero_tiros = crear_tablero()     
         self.flota = []
         self.inventario = list(NAVES)
         self.nave_actual = 0
@@ -45,7 +44,7 @@ class ClienteBatallaNaval:
 
         self.ventana = ventana
         self.ventana.title("Batalla Naval - Interfaz Gráfica")
-        self.ventana.geometry("900x600")
+        self.ventana.geometry("1180x640")
 
         self.lbl_estado = ctk.CTkLabel(ventana, text="Esperando conexión...", font=("Roboto", 16, "bold"))
         self.lbl_estado.pack(pady=10)
@@ -66,6 +65,15 @@ class ClienteBatallaNaval:
         ctk.CTkLabel(self.frame_mi_flota, text="Mi Flota", font=("Roboto", 14)).pack()
         self.botones_flota = [[None] * TAM for _ in range(TAM)]
 
+       
+        self.frame_estado = ctk.CTkFrame(self.frame_tableros)
+        self.frame_estado.pack(side="right", padx=(0, 15))
+        self.filas_estado = {"enemiga": {}, "propia": {}}   
+        self.lbl_contador = {}                              
+        self.hundidas_cont = {"enemiga": 0, "propia": 0}
+        self.titulos_estado = {"enemiga": "Flota enemiga", "propia": "Mi flota"}
+        self.construir_tabla_estado()
+
         self.frame_radar = ctk.CTkFrame(self.frame_tableros)
         self.frame_radar.pack(side="right", padx=20)
         ctk.CTkLabel(self.frame_radar, text="Radar de Ataque", font=("Roboto", 14)).pack()
@@ -75,7 +83,6 @@ class ClienteBatallaNaval:
         self.ventana.after(0, funcion)
 
     def decir(self, texto):
-        """Muestra un texto de estado y lo guarda para completarlo con el turno."""
         self.texto_resultado = texto
         self.ui(lambda: self.lbl_estado.configure(text=texto))
 
@@ -102,9 +109,36 @@ class ClienteBatallaNaval:
             for btn in fila:
                 btn.configure(state="disabled")
 
-    # ------------------------------------------------------------------
-    # Conexión y despliegue
-    # ------------------------------------------------------------------
+   
+    def construir_tabla_estado(self):
+        ctk.CTkLabel(self.frame_estado, text="Estado de las naves",
+                     font=("Roboto", 14)).pack(pady=(0, 5))
+        for clave in ("enemiga", "propia"):
+            cab = ctk.CTkLabel(self.frame_estado, font=("Roboto", 12, "bold"),
+                               text=f"{self.titulos_estado[clave]}: 0/{len(NAVES)} hundidas")
+            cab.pack(pady=(8, 2))
+            self.lbl_contador[clave] = cab
+
+            tabla = ctk.CTkFrame(self.frame_estado)
+            tabla.pack(padx=8, pady=2)
+            for i, (nombre, longitud) in enumerate(NAVES):
+                ctk.CTkLabel(tabla, text=f"{nombre} ({longitud})", anchor="w",
+                             width=120).grid(row=i, column=0, padx=(6, 4), pady=1)
+                estado = ctk.CTkLabel(tabla, text="A flote", text_color=C_NAVE, width=70)
+                estado.grid(row=i, column=1, padx=(4, 6), pady=1)
+                self.filas_estado[clave][nombre] = estado
+
+    def marcar_hundida_en_tabla(self, clave, nombre):
+        def aplicar():
+            etiqueta = self.filas_estado[clave].get(nombre)
+            if etiqueta is None or etiqueta.cget("text") == "HUNDIDO":
+                return
+            etiqueta.configure(text="HUNDIDO", text_color=C_IMPACTO)
+            self.hundidas_cont[clave] += 1
+            self.lbl_contador[clave].configure(
+                text=f"{self.titulos_estado[clave]}: {self.hundidas_cont[clave]}/{len(NAVES)} hundidas")
+        self.ui(aplicar)
+
     def iniciar_conexion(self):
         nombre = self.entry_nombre.get().strip()
         if not nombre:
@@ -191,7 +225,6 @@ class ClienteBatallaNaval:
             self.switch_orientacion.configure(state="disabled")
             threading.Thread(target=self.proceso_partida, daemon=True).start()
 
-    # Partida: un solo hilo escucha al servidor y reacciona a cada mensaje
     def proceso_partida(self):
         try:
             self.socket_cliente.sendall(b"ESTADO:LISTO")
@@ -209,11 +242,9 @@ class ClienteBatallaNaval:
                 self.conexion_perdida()
                 return
 
-            # Un solo recv() = una respuesta del servidor, con 1 o más
-            # segmentos separados por '|'
             for segmento in datos.decode("utf-8").strip().split("|"):
                 if segmento.startswith("ATAQUE_PC:"):
-                    time.sleep(PAUSA_PC)     # pausa visual antes del tiro de la PC
+                    time.sleep(PAUSA_PC)     
                 if self.manejar_mensaje(segmento):
                     return
 
@@ -223,7 +254,7 @@ class ClienteBatallaNaval:
             self.ui(lambda: self.lbl_estado.configure(text="Se perdió la conexión con el servidor."))
 
     def manejar_mensaje(self, msg):
-        """Procesa un segmento del servidor. Devuelve True si terminó el juego."""
+        
         if msg.startswith("RESULTADO:"):
             self.resultado_de_mi_ataque(msg)
         elif msg.startswith("ATAQUE_PC:"):
@@ -259,7 +290,7 @@ class ClienteBatallaNaval:
             self.conexion_perdida()
 
     def resultado_de_mi_ataque(self, msg):
-        """Respuesta del servidor a un tiro mío: se refleja en el radar."""
+        
         if self.ultimo_ataque is None:
             return
         f, c = self.ultimo_ataque
@@ -283,18 +314,19 @@ class ClienteBatallaNaval:
             for fi, co in celdas:
                 self.pintar_radar(fi, co, '#')
             self.racha_tiros += 1
+            self.marcar_hundida_en_tabla("enemiga", nombre)
             self.decir(f"¡Hundiste el {nombre} enemigo!")
         else:
             self.decir("Tiro no válido, elige otra casilla.")
 
     def recibir_ataque_pc(self, msg):
-        """Tiro de la PC: lo valido contra mi tablero y respondo."""
+        
         try:
             f, c = map(int, msg.split(":", 1)[1].split(","))
         except ValueError:
             return
         resultado, nave = procesar_disparo(self.mi_tablero, self.flota, f, c)
-        if resultado in ("REPETIDO", "INVALIDO"):   # no debería ocurrir
+        if resultado in ("REPETIDO", "INVALIDO"):   
             resultado, nave = "AGUA", None
         self.socket_cliente.sendall(mensaje_resultado(resultado, nave).encode("utf-8"))
 
@@ -307,15 +339,16 @@ class ClienteBatallaNaval:
         else:
             for fi, co in nave["celdas"]:
                 self.pintar_flota(fi, co, '#')
+            self.marcar_hundida_en_tabla("propia", nave["nombre"])
             self.decir(f"¡La PC hundió tu {nave['nombre']}!")
 
     def terminar(self, victoria):
         self.juego_terminado = True
         self.mi_turno = False
         if victoria:
-            texto, color = "¡GANASTE! Hundiste toda la flota de la PC.", "#a3be8c"
+            texto, color = "¡GANASTE!.", "#a3be8c"
         else:
-            texto, color = "DERROTA. La PC hundió toda tu flota.", "#bf616a"
+            texto, color = "DERROTA.", "#bf616a"
         self.ui(self.deshabilitar_radar)
         self.ui(lambda: self.lbl_estado.configure(text=texto, text_color=color, font=("Roboto", 18, "bold")))
         try:

@@ -10,8 +10,8 @@ from tablero import (
 HOST = '127.0.0.1'
 PUERTO = 65432
 
-MAX_TIROS = 3             # tiros consecutivos permitidos por turno
-TOTAL_NAVES = len(NAVES)  # 7 naves = 21 casillas
+MAX_TIROS = 3             
+TOTAL_NAVES = len(NAVES)  
 
 
 class ErrorProtocolo(Exception):
@@ -19,17 +19,15 @@ class ErrorProtocolo(Exception):
 
 
 class Partida:
-    """Estado de una partida. procesar() recibe el mensaje del cliente y
-    devuelve (respuesta_unica_para_el_cliente, partida_terminada)."""
 
     def __init__(self, nombre):
         self.nombre = nombre
-        self.tablero_pc = crear_tablero()          # naves de la PC
-        self.tablero_tiros_pc = crear_tablero()    # tiros de la PC al usuario
+        self.tablero_pc = crear_tablero()          
+        self.tablero_tiros_pc = crear_tablero()    
         self.flota_pc = colocar_flota_aleatoria(self.tablero_pc)
         self.hundidas_usuario = 0
         self.turno = random.choice(['USUARIO', 'PC'])
-        self.tiros = 0                 # aciertos seguidos en el turno actual
+        self.tiros = 0                 
         self.ultimo_tiro_pc = None
         self._mostrar_tableros()
 
@@ -64,7 +62,7 @@ class Partida:
         texto = mensaje_resultado(resultado, nave)
 
         if resultado in ("INVALIDO", "REPETIDO"):
-            return f"{texto}|TURNO:USUARIO", False     # no cuenta como tiro
+            return f"{texto}|TURNO:USUARIO", False     
 
         detalle = f"hundió el {nave['nombre']}" if nave else resultado.lower()
         print(f"El usuario disparó a ({f},{c}): {detalle}")
@@ -79,7 +77,7 @@ class Partida:
         if resultado == "AGUA" or self.tiros >= MAX_TIROS:
             self.turno, self.tiros = 'PC', 0
             return f"{texto}|TURNO:PC|{self._nuevo_tiro_pc()}", False
-        return f"{texto}|TURNO:USUARIO", False         # sigue tirando
+        return f"{texto}|TURNO:USUARIO", False         
 
     # turno de la PC 
     def _resultado_del_tiro_pc(self, mensaje):
@@ -112,7 +110,7 @@ class Partida:
         if tipo == "AGUA" or self.tiros >= MAX_TIROS:
             self.turno, self.tiros = 'USUARIO', 0
             return "TURNO:USUARIO", False
-        return self._nuevo_tiro_pc(), False            # la PC sigue tirando
+        return self._nuevo_tiro_pc(), False            
 
 
 def recibir(conexion):
@@ -155,8 +153,7 @@ def iniciar_servidor():
         print(f"Servidor a la escucha en {HOST}:{PUERTO}...")
 
         conexion, direccion = servidor.accept()
-        # Solo se atiende a un cliente: se deja de escuchar, así cualquier
-        # otro intento de conexión es rechazado.
+       
         servidor.close()
 
         with conexion:

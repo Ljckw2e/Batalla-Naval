@@ -98,7 +98,7 @@ def recibir_ataque_pc(sock, segmento, mi_tablero, flota):
     f, c = map(int, segmento.split(":", 1)[1].split(","))
     print(f"\nLa PC disparó en: Fila {f}, Columna {c}")
     resultado, nave = procesar_disparo(mi_tablero, flota, f, c)
-    if resultado in ("REPETIDO", "INVALIDO"):   # no debería ocurrir
+    if resultado in ("REPETIDO", "INVALIDO"):  
         resultado, nave = "AGUA", None
     enviar(sock, mensaje_resultado(resultado, nave))
 
@@ -143,8 +143,8 @@ def iniciar_cliente():
             print("[ERROR] No se pudo conectar. ¿Está corriendo servidor.py?")
             return None
 
-        mi_tablero = crear_tablero()       # mis naves
-        tablero_tiros = crear_tablero()    # mis tiros al rival
+        mi_tablero = crear_tablero()       
+        tablero_tiros = crear_tablero()    
 
         nombre = ""
         while not nombre.strip():
